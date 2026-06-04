@@ -5,6 +5,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 st.set_page_config(page_title="Bina Enerji Dijital İkizi", layout="wide")
 
@@ -360,12 +361,13 @@ with ca4:
 
 # ── SEKMELER (5 adet) ─────────────────────────────────────────────────────────
 st.markdown('<div class="section-title">📈 Grafikler & Analizler</div>', unsafe_allow_html=True)
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "⚡ Güç Karşılaştırması",
     "🌡️ Sıcaklık & Doluluk",
     "🤖 ML Model İçgörüleri",
     "🏠 Dijital İkiz — İç Sıcaklık",
     "🤝 Ajan Kararları",
+    "📡 IoT Validasyonu",
 ])
 
 # ── TAB 1: Güç Karşılaştırması ────────────────────────────────────────────────
@@ -669,6 +671,328 @@ Ağırlık: <b>{:.2f}</b>
         use_container_width=True,
         height=430,
     )
+
+# ── TAB 6: IoT Validasyonu ───────────────────────────────────────────────────
+UCI_URL = (
+    "https://archive.ics.uci.edu/ml/machine-learning-databases"
+    "/00374/energydata_complete.csv"
+)
+
+@st.cache_data(show_spinner=False)
+def uci_indir():
+    """UCI Appliances Energy Prediction veri setini indir ve önişle."""
+    raw = pd.read_csv(UCI_URL, parse_dates=["date"])
+    raw = raw.set_index("date").resample("h").mean(numeric_only=True)
+    raw.index.name = "Tarih"
+    # Oda sıcaklıklarının ortalaması (T1-T9)
+    oda_sutunlari = [c for c in raw.columns if c.startswith("T") and c != "T_out"]
+    raw["T_ic_gercek"] = raw[oda_sutunlari].mean(axis=1)
+    return raw
+
+def csv_isle(uploaded):
+    """Yüklenen CSV'yi UCI formatına uyumlu hale getir."""
+    raw = pd.read_csv(uploaded, parse_dates=["date"])
+    raw = raw.set_index("date").resample("h").mean(numeric_only=True)
+    raw.index.name = "Tarih"
+    oda_sutunlari = [c for c in raw.columns if c.startswith("T") and c != "T_out"]
+    if not oda_sutunlari:
+        raise ValueError("CSV'de T1–T9 gibi oda sıcaklığı sütunu bulunamadı.")
+    raw["T_ic_gercek"] = raw[oda_sutunlari].mean(axis=1)
+    return raw
+
+with tab6:
+    st.markdown("#### 📡 Gerçek IoT Verisiyle Dijital İkiz Validasyonu")
+    st.caption(
+        "UCI Appliances Energy Prediction veri seti — Belçika'da gerçek bir evden "
+        "4,5 aylık 10 dakikalık ölçümler (2016). "
+        "Dijital İkiz modelimizin ürettiği iç sıcaklık tahmini, "
+        "gerçek oda sıcaklıklarıyla karşılaştırılır."
+    )
+
+    # ── Veri Kaynağı Seçimi ──────────────────────────────────────────────────
+    with st.container():
+        col_src1, col_src2 = st.columns([1, 1])
+        with col_src1:
+            st.markdown("**Seçenek 1 — Otomatik İndirme (UCI)**")
+            yukle_btn = st.button("🌐 UCI Veri Setini İndir", use_container_width=True)
+        with col_src2:
+            st.markdown("**Seçenek 2 — Kendi CSV Dosyan**")
+            uploaded_file = st.file_uploader(
+                "CSV yükle (UCI formatı: date, T1-T9, T_out)",
+                type="csv", label_visibility="collapsed"
+            )
+
+    iot_df = None
+    veri_kaynagi = None
+
+    # Önce upload kontrol et (öncelikli)
+    if uploaded_file is not None:
+        try:
+            with st.spinner("CSV işleniyor..."):
+                iot_df = csv_isle(uploaded_file)
+            veri_kaynagi = f"📂 Yüklenen dosya: `{uploaded_file.name}`"
+            st.success("✅ Dosya başarıyla yüklendi.")
+        except Exception as e:
+            st.error(f"❌ Dosya okunamadı: {e}")
+
+    # Sonra UCI indirme dene
+    elif yukle_btn:
+        try:
+            with st.spinner("🌐 UCI sunucusundan indiriliyor..."):
+                iot_df = uci_indir()
+            veri_kaynagi = "🌐 UCI Appliances Energy Prediction Dataset"
+            st.success(f"✅ İndirme başarılı — {len(iot_df):,} saatlik kayıt.")
+        except Exception as e:
+            st.warning(
+                f"⚠️ Otomatik indirme başarısız: `{e}`\n\n"
+                "UCI sitesine erişilemiyor olabilir. "
+                "Veri setini manuel olarak indirip yukarıdan yükleyebilirsin:\n\n"
+                "👉 [energydata_complete.csv]"
+                "(https://archive.ics.uci.edu/ml/machine-learning-databases/00374/energydata_complete.csv)"
+            )
+
+    # ── Validasyon Arayüzü ───────────────────────────────────────────────────
+    if iot_df is not None:
+        st.divider()
+        st.caption(f"Veri kaynağı: {veri_kaynagi}")
+
+        # Gün seçici
+        mevcut_gunler = iot_df.index.normalize().unique().sort_values()
+        # En az 24 saatlik verisi olan günler
+        gun_sayilari  = iot_df.groupby(iot_df.index.normalize()).size()
+        tam_gunler    = gun_sayilari[gun_sayilari >= 24].index
+        if len(tam_gunler) == 0:
+            st.error("Veri setinde 24 saatlik tam gün bulunamadı.")
+        else:
+            secilen_gun = st.select_slider(
+                "📅 Validasyon için gün seçin:",
+                options=[str(g.date()) for g in tam_gunler],
+                value=str(tam_gunler[len(tam_gunler) // 2].date()),
+            )
+            gun_filtre = iot_df[iot_df.index.date == pd.Timestamp(secilen_gun).date()]
+            gun_filtre = gun_filtre.head(24).reset_index(drop=True)
+
+            if len(gun_filtre) < 24:
+                st.warning("Seçilen gün için 24 saatlik tam veri yok, başka bir gün deneyin.")
+            else:
+                # Gerçek değerler
+                t_dis_gercek = gun_filtre["T_out"].values          # dış sıcaklık
+                t_ic_gercek  = gun_filtre["T_ic_gercek"].values    # ölçülen iç sıcaklık
+                saatler_24   = list(range(24))
+
+                # Digital Twin simülasyonu — gerçek dış sıcaklıkla çalıştır
+                # Klima sistemi yok varsayımı (sadece termal dinamik):
+                # P_klima = 0 → klimasız doğal ısı değişimi modeli
+                ic_sic_val = [0.0] * 24
+                ic_sic_val[0] = float(t_dis_gercek[0])
+                for t in range(23):
+                    ic_sic_val[t + 1] = (
+                        ic_sic_val[t]
+                        + bina_yalitim * (float(t_dis_gercek[t]) - ic_sic_val[t])
+                    )
+
+                # Metrikler
+                mae  = mean_absolute_error(t_ic_gercek, ic_sic_val)
+                rmse = mean_squared_error(t_ic_gercek, ic_sic_val) ** 0.5
+                r2   = r2_score(t_ic_gercek, ic_sic_val)
+
+                # ── KPI: Validasyon Metrikleri ────────────────────────────────
+                st.markdown("**Model Doğrulama Metrikleri**")
+                vm1, vm2, vm3, vm4 = st.columns(4)
+                vm1.metric("MAE (Ortalama Mutlak Hata)", f"{mae:.2f} °C",
+                           help="Tahmin ile gerçek arasındaki ortalama mutlak fark.")
+                vm2.metric("RMSE (Kök Ortalama Kare Hata)", f"{rmse:.2f} °C",
+                           help="Büyük hatalara daha duyarlı hata metriği.")
+                vm3.metric("R² Skoru", f"{r2:.3f}",
+                           help="1.0 = mükemmel uyum, 0 = rastgele tahmin.")
+                vm4.metric("Veri Noktası", "24 saat",
+                           help=f"Seçilen gün: {secilen_gun}")
+
+                # Kalite yorumu
+                if r2 >= 0.85:
+                    st.success(f"🟢 Model başarılı — R² = {r2:.3f}: Dijital İkiz gerçek binayı yüksek doğrulukla taklit ediyor.")
+                elif r2 >= 0.60:
+                    st.info(f"🟡 Model kabul edilebilir — R² = {r2:.3f}: Yalıtım katsayısını (α) ayarlayarak iyileştirilebilir.")
+                else:
+                    st.warning(f"🔴 Model zayıf — R² = {r2:.3f}: Sidebar'dan α ve β parametrelerini gerçek binaya göre kalibre edin.")
+
+                st.divider()
+
+                # ── Ana Grafik: Gerçek vs Simüle ─────────────────────────────
+                fig_val = go.Figure()
+
+                # Dış sıcaklık referans
+                fig_val.add_trace(go.Scatter(
+                    x=saatler_24, y=t_dis_gercek,
+                    name="Gerçek Dış Sıcaklık (IoT)",
+                    line=dict(color="#ff7043", width=1, dash="dot"),
+                    mode="lines",
+                ))
+                # Gerçek iç sıcaklık
+                fig_val.add_trace(go.Scatter(
+                    x=saatler_24, y=t_ic_gercek,
+                    name="Gerçek İç Sıcaklık (IoT Sensörü)",
+                    line=dict(color="#26c6da", width=3),
+                    mode="lines+markers",
+                ))
+                # Simüle iç sıcaklık
+                fig_val.add_trace(go.Scatter(
+                    x=saatler_24, y=ic_sic_val,
+                    name="Dijital İkiz Tahmini",
+                    line=dict(color="#ab47bc", width=2, dash="dash"),
+                    mode="lines+markers",
+                ))
+                # Hata bandı (±MAE)
+                fig_val.add_trace(go.Scatter(
+                    x=saatler_24 + saatler_24[::-1],
+                    y=[v + mae for v in ic_sic_val] + [v - mae for v in ic_sic_val[::-1]],
+                    fill="toself",
+                    fillcolor="rgba(171,71,188,0.12)",
+                    line=dict(color="rgba(0,0,0,0)"),
+                    name=f"±MAE Bandı ({mae:.2f} °C)",
+                    hoverinfo="skip",
+                ))
+                fig_val.update_layout(
+                    title=f"Dijital İkiz Validasyonu — {secilen_gun}",
+                    xaxis_title="Saat",
+                    yaxis_title="Sıcaklık (°C)",
+                    hovermode="x unified",
+                    legend=dict(orientation="h", y=1.13),
+                    height=440,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#cfe2ff",
+                )
+                st.plotly_chart(fig_val, use_container_width=True)
+
+                # ── Hata Dağılımı Grafiği ─────────────────────────────────────
+                hatalar = [s - g for s, g in zip(ic_sic_val, t_ic_gercek)]
+                col_hata1, col_hata2 = st.columns(2)
+                with col_hata1:
+                    fig_hata = px.bar(
+                        x=saatler_24, y=hatalar,
+                        color=hatalar,
+                        color_continuous_scale=["#42a5f5", "#e0e0e0", "#ef5350"],
+                        color_continuous_midpoint=0,
+                        labels={"x": "Saat", "y": "Hata (°C)", "color": "Hata"},
+                        title="Saatlik Tahmin Hatası (Simüle − Gerçek)",
+                    )
+                    fig_hata.add_hline(y=0, line_dash="dash",
+                                       line_color="#ffffff", opacity=0.4)
+                    fig_hata.update_layout(
+                        height=300,
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#cfe2ff",
+                        coloraxis_showscale=False,
+                    )
+                    st.plotly_chart(fig_hata, use_container_width=True)
+
+                with col_hata2:
+                    # Scatter: gerçek vs tahmin (ideal = köşegen)
+                    fig_scatter = px.scatter(
+                        x=t_ic_gercek, y=ic_sic_val,
+                        labels={"x": "Gerçek T_iç (°C)", "y": "Tahmin T_iç (°C)"},
+                        title="Gerçek vs Tahmin — İdeal: y = x",
+                        trendline="ols",
+                        trendline_color_override="#42a5f5",
+                    )
+                    _rng = [min(min(t_ic_gercek), min(ic_sic_val)) - 0.5,
+                            max(max(t_ic_gercek), max(ic_sic_val)) + 0.5]
+                    fig_scatter.add_shape(type="line",
+                        x0=_rng[0], y0=_rng[0], x1=_rng[1], y1=_rng[1],
+                        line=dict(color="#ffa726", dash="dash", width=1.5))
+                    fig_scatter.update_layout(
+                        height=300,
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#cfe2ff",
+                    )
+                    st.plotly_chart(fig_scatter, use_container_width=True)
+
+                # ── Karşılaştırma Tablosu ─────────────────────────────────────
+                st.divider()
+                st.markdown("#### 📋 Saat Saat Karşılaştırma Tablosu")
+                tablo_val = pd.DataFrame({
+                    "Saat":                    saatler_24,
+                    "Dış Sıcaklık (IoT) °C":  t_dis_gercek.round(2),
+                    "Gerçek İç Sıcaklık °C":   t_ic_gercek.round(2),
+                    "Dijital İkiz Tahmini °C":  [round(v, 2) for v in ic_sic_val],
+                    "Hata (°C)":               [round(s - g, 2) for s, g in
+                                                zip(ic_sic_val, t_ic_gercek)],
+                })
+                st.dataframe(
+                    tablo_val.style
+                    .format({
+                        "Dış Sıcaklık (IoT) °C":   "{:.2f}",
+                        "Gerçek İç Sıcaklık °C":    "{:.2f}",
+                        "Dijital İkiz Tahmini °C":   "{:.2f}",
+                        "Hata (°C)":                 "{:+.2f}",
+                    })
+                    .background_gradient(subset=["Hata (°C)"], cmap="RdBu", vmin=-3, vmax=3),
+                    use_container_width=True,
+                    height=380,
+                )
+
+                # ── Kalibrasyon İpucu ─────────────────────────────────────────
+                with st.expander("🔧 Modeli Kalibre Etmek İçin İpuçları"):
+                    st.markdown(f"""
+**MAE = {mae:.2f} °C | RMSE = {rmse:.2f} °C | R² = {r2:.3f}**
+
+Dijital İkiz modeli sadece **dış sıcaklığa** dayalı termal dinamiği simüle eder.
+Gerçek bir binanın iç sıcaklığı şu faktörlerden de etkilenir:
+
+| Faktör | Etkisi | Modelde Karşılığı |
+|--------|--------|-------------------|
+| Dış sıcaklık etkisi | Yüksek | **α** (Yalıtım katsayısı) |
+| Güneş radyasyonu | Orta | α'yı artırmak simüle eder |
+| İnsan ısısı | Düşük-Orta | **β** (Kişi başı ısı katkısı) |
+| Cihaz ısısı | Düşük | β'ya dahil edilebilir |
+| Termal atalet | Yüksek | α'yı küçültmek simüle eder |
+
+**Kalibrasyonu nasıl yaparsın?**
+Sidebar'dan **Yalıtım Katsayısı (α)** sliderını değiştir ve
+bu sekmedeki R² skorunun nasıl değiştiğini izle.
+R² maksimum olduğu noktada α kalibre edilmiş demektir.
+
+> Bu veri seti: *Candanedo et al. (2017). Appliances Energy Prediction.*
+> UCI ML Repository. DOI: [10.24432/C5VC8G](https://doi.org/10.24432/C5VC8G)
+                    """)
+
+    else:
+        # Henüz veri yüklenmemiş — yönlendirici bilgi kartları
+        st.divider()
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.markdown("""
+<div style="background:#1e2a3a;border-radius:10px;padding:20px;border:1px solid #2e4060;">
+<h4 style="color:#42a5f5;">🌐 UCI Appliances Energy Prediction</h4>
+<p style="color:#8ab4d4;font-size:13px;">
+Belçika'da gerçek bir evden 4,5 aylık 10 dakikalık ölçümler.<br><br>
+<b>İçerik:</b> T_out (dış), T1–T9 (9 oda), RH (nem), enerji<br>
+<b>Boyut:</b> ~20.000 satır<br>
+<b>Erişim:</b> Ücretsiz, hesap gerekmez
+</p>
+<p style="color:#42a5f5;font-size:12px;">
+UCI ML Repository — Candanedo et al. (2017)
+</p>
+</div>""", unsafe_allow_html=True)
+        with col_g2:
+            st.markdown("""
+<div style="background:#1e2a3a;border-radius:10px;padding:20px;border:1px solid #2e4060;">
+<h4 style="color:#ab47bc;">📂 Kendi CSV Dosyan</h4>
+<p style="color:#8ab4d4;font-size:13px;">
+Kaggle, ASHRAE veya başka kaynaklardan indirdiğin CSV'yi yükle.<br><br>
+<b>Gerekli sütunlar:</b><br>
+• <code>date</code> — tarih/saat (örn. 2016-01-11 17:00:00)<br>
+• <code>T_out</code> — dış sıcaklık (°C)<br>
+• <code>T1</code>–<code>T9</code> — oda sıcaklıkları (en az biri)
+</p>
+</div>""", unsafe_allow_html=True)
+        st.info(
+            "👆 Başlamak için yukarıdan **UCI Veri Setini İndir** butonuna bas "
+            "veya kendi CSV dosyasını yükle."
+        )
 
 # ── DETAYLI TABLO ─────────────────────────────────────────────────────────────
 st.markdown('<div class="section-title">📋 Saatlik Detay Tablosu — Tüm Sistemler</div>',
