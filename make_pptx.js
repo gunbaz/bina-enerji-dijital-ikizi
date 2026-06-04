@@ -2,38 +2,68 @@ const pptxgen = require("pptxgenjs");
 
 const pres = new pptxgen();
 pres.layout = "LAYOUT_16x9"; // 10" x 5.625"
-pres.title  = "Bina Enerji Yonetimi Dijital Ikizi";
+pres.title  = "Bina Enerji Yonetimi Dijital Ikizi ve Ajan Sistemi";
 
 // ─── PALET ────────────────────────────────────────────────────────────────────
 const C = {
-  bg      : "0B1E35",   // koyu lacivert arka plan
-  panel   : "162C47",   // kart arka planı
-  accent  : "42A5F5",   // mavi vurgu
-  accent2 : "00BFA5",   // yeşil-teal vurgu
+  bg      : "0B1E35",
+  panel   : "162C47",
+  panelDk : "0D1E30",
+  accent  : "42A5F5",   // mavi
+  teal    : "00BFA5",   // teal
+  gold    : "F59E0B",   // sarı
+  purple  : "AB47BC",   // mor
+  red     : "EF5350",
+  green   : "66BB6A",
   white   : "FFFFFF",
   muted   : "8AB4D4",
-  dark    : "061325",
-  warn    : "F59E0B",
-  bar     : "1A3A5C",   // başlık bar
+  bar     : "1A3A5C",
 };
 
 const makeShadow = () => ({
   type: "outer", color: "000000", blur: 8, offset: 3, angle: 135, opacity: 0.25
 });
 
-// ─── YARDIMCI: renkli kart ────────────────────────────────────────────────────
+// Sol kenar şeritli kart
 function card(slide, x, y, w, h, accentColor) {
   slide.addShape(pres.shapes.RECTANGLE, {
     x, y, w, h,
     fill: { color: C.panel },
-    line: { color: accentColor || C.accent, width: 1.5 },
+    line: { color: accentColor, width: 1.5 },
     shadow: makeShadow(),
   });
-  // sol kenar şerit
   slide.addShape(pres.shapes.RECTANGLE, {
     x, y, w: 0.07, h,
-    fill: { color: accentColor || C.accent },
-    line: { color: accentColor || C.accent, width: 0 },
+    fill: { color: accentColor },
+    line: { color: accentColor, width: 0 },
+  });
+}
+
+// Başlık bar fonksiyonu
+function titleBar(slide, text) {
+  slide.addShape(pres.shapes.RECTANGLE, {
+    x: 0, y: 0, w: 10, h: 1.0,
+    fill: { color: C.bar },
+    line: { color: C.bar, width: 0 },
+  });
+  slide.addText(text, {
+    x: 0.4, y: 0.1, w: 9.2, h: 0.8,
+    fontSize: 23, bold: true, color: C.white,
+    fontFace: "Calibri", align: "left", valign: "middle",
+  });
+  slide.addShape(pres.shapes.RECTANGLE, {
+    x: 0, y: 0.98, w: 10, h: 0.04,
+    fill: { color: C.accent },
+    line: { color: C.accent, width: 0 },
+  });
+}
+
+// Alt çizgi
+function bottomBar(slide, color) {
+  slide.addShape(pres.shapes.RECTANGLE, {
+    x: 0, y: 5.57, w: 10, h: 0.055,
+    fill: { color: color || C.accent },
+    line: { color: color || C.accent, width: 0 },
   });
 }
 
@@ -42,15 +72,15 @@ function card(slide, x, y, w, h, accentColor) {
   const s = pres.addSlide();
   s.background = { color: C.bg };
 
-  // Dekoratif daireler (arka planda)
+  // Dekoratif daireler
   s.addShape(pres.shapes.OVAL, {
-    x: 7.8, y: -1.0, w: 4.0, h: 4.0,
-    fill: { color: "1A4A7A", transparency: 60 },
+    x: 7.5, y: -0.9, w: 4.2, h: 4.2,
+    fill: { color: "1A4A7A", transparency: 62 },
     line: { color: "1A4A7A", width: 0 },
   });
   s.addShape(pres.shapes.OVAL, {
-    x: -1.2, y: 3.5, w: 3.5, h: 3.5,
-    fill: { color: "005B8E", transparency: 70 },
+    x: -1.4, y: 3.4, w: 3.8, h: 3.8,
+    fill: { color: "005B8E", transparency: 72 },
     line: { color: "005B8E", width: 0 },
   });
 
@@ -61,289 +91,304 @@ function card(slide, x, y, w, h, accentColor) {
     line: { color: C.accent, width: 0 },
   });
 
-  // Bina ikonu (geometrik)
-  const bx = 0.55, by = 0.55;
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: bx, y: by, w: 0.55, h: 0.55,
-    fill: { color: C.accent },
-    line: { color: C.accent, width: 0 },
-  });
-  s.addText("🏢", { x: bx - 0.02, y: by - 0.04, w: 0.6, h: 0.6, fontSize: 24, align: "center" });
-
   // Başlık
-  s.addText("Kural Tabanlı Bina Enerji Yönetimi", {
-    x: 0.5, y: 0.55, w: 9, h: 0.75,
-    fontSize: 34, bold: true, color: C.white,
+  s.addText("Bina Enerji Yönetimi", {
+    x: 0.5, y: 0.22, w: 9, h: 0.7,
+    fontSize: 33, bold: true, color: C.white,
     fontFace: "Calibri", align: "left",
   });
-  s.addText("Performans Dijital İkizi", {
-    x: 0.5, y: 1.25, w: 9, h: 0.6,
-    fontSize: 26, bold: false, color: C.accent,
+  s.addText("Dijital İkiz & Ajan Sistemi", {
+    x: 0.5, y: 0.88, w: 9, h: 0.58,
+    fontSize: 25, bold: false, color: C.accent,
     fontFace: "Calibri", align: "left",
   });
-  s.addText("Akıllı Bina Sistemlerinde Makine Öğrenmesi Destekli Enerji Optimizasyonu", {
-    x: 0.5, y: 1.82, w: 9, h: 0.4,
-    fontSize: 13, color: C.muted, fontFace: "Calibri", align: "left", italic: true,
+  s.addText("Fiziksel Termal Model  ·  Çoklu Ajan  ·  ML  ·  Gerçek IoT Validasyonu", {
+    x: 0.5, y: 1.44, w: 9, h: 0.36,
+    fontSize: 12.5, color: C.muted, fontFace: "Calibri", align: "left", italic: true,
   });
 
-  // Ayırıcı çizgi
+  // Ayırıcı
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0.5, y: 2.3, w: 4.5, h: 0.03,
+    x: 0.5, y: 1.87, w: 5.0, h: 0.03,
     fill: { color: C.accent },
     line: { color: C.accent, width: 0 },
   });
 
-  // 4 madde — kart içinde
-  const items = [
-    { icon: "🔬", text: "Gerçek bina olmadan enerji yönetimi simülasyonu" },
-    { icon: "🌐", text: "Streamlit tabanlı interaktif web arayüzü" },
-    { icon: "⚖️", text: "Geleneksel (If/Else) vs ML modeli (Random Forest) karşılaştırması" },
-    { icon: "🛠️", text: "Python · Streamlit · Pandas · Plotly · Scikit-learn" },
+  // Sol — 4 özellik kartı
+  const features = [
+    { icon: "🔬", color: C.accent,  text: "Fiziksel ısı dengesi denklemli gerçek Dijital İkiz simülasyonu" },
+    { icon: "🤝", color: C.purple,  text: "3 otonom ajan + koordinatör ile çoklu ajan karar sistemi" },
+    { icon: "🌲", color: C.teal,    text: "8.760 örnekle eğitilmiş Random Forest ML modeli" },
+    { icon: "📡", color: C.gold,    text: "UCI veri setiyle gerçek IoT sensör verisi validasyonu" },
   ];
-  items.forEach((it, i) => {
-    const iy = 2.55 + i * 0.62;
-    s.addText(it.icon + "  " + it.text, {
-      x: 0.5, y: iy, w: 6.5, h: 0.5,
-      fontSize: 13.5, color: C.white, fontFace: "Calibri",
+  features.forEach((f, i) => {
+    const fy = 2.05 + i * 0.72;
+    card(s, 0.5, fy, 5.7, 0.60, f.color);
+    s.addText(f.icon, { x: 0.62, y: fy + 0.08, w: 0.42, h: 0.42, fontSize: 18, align: "center" });
+    s.addText(f.text, {
+      x: 1.12, y: fy + 0.09, w: 4.95, h: 0.42,
+      fontSize: 12, color: C.white, fontFace: "Calibri",
       align: "left", valign: "middle",
     });
   });
 
-  // Sağ panel — büyük stat
-  card(s, 7.2, 2.3, 2.4, 2.8, C.accent2);
-  s.addText("~30%", {
-    x: 7.3, y: 2.55, w: 2.2, h: 0.9,
-    fontSize: 42, bold: true, color: C.accent2,
-    fontFace: "Calibri", align: "center",
-  });
-  s.addText("Enerji\nTasarrufu", {
-    x: 7.3, y: 3.45, w: 2.2, h: 0.7,
-    fontSize: 13, color: C.muted,
-    fontFace: "Calibri", align: "center",
-  });
-  s.addText("ML modeli sayesinde", {
-    x: 7.3, y: 4.1, w: 2.2, h: 0.4,
-    fontSize: 10, color: C.accent2,
-    fontFace: "Calibri", align: "center", italic: true,
+  // Sağ — 3 KPI kutusu
+  const kpis = [
+    { val: "~30%",    lbl: "ML Enerji\nTasarrufu",  color: C.accent },
+    { val: "~37%",    lbl: "Ajan Enerji\nTasarrufu", color: C.purple },
+    { val: "R²≈0.90", lbl: "IoT Doğruluk\nSkoru",   color: C.teal },
+  ];
+  kpis.forEach((k, i) => {
+    const ky = 2.05 + i * 1.08;
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 6.65, y: ky, w: 3.0, h: 0.96,
+      fill: { color: C.panelDk },
+      line: { color: k.color, width: 2 },
+      shadow: makeShadow(),
+    });
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 6.65, y: ky, w: 3.0, h: 0.055,
+      fill: { color: k.color },
+      line: { color: k.color, width: 0 },
+    });
+    s.addText(k.val, {
+      x: 6.65, y: ky + 0.07, w: 3.0, h: 0.48,
+      fontSize: 28, bold: true, color: k.color,
+      fontFace: "Calibri", align: "center",
+    });
+    s.addText(k.lbl, {
+      x: 6.65, y: ky + 0.54, w: 3.0, h: 0.40,
+      fontSize: 11, color: C.muted, fontFace: "Calibri", align: "center",
+    });
   });
 
-  // Alt çizgi
+  // Alt tech badge bar
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 5.58, w: 10, h: 0.045,
-    fill: { color: C.accent },
-    line: { color: C.accent, width: 0 },
+    x: 0.5, y: 5.22, w: 9.0, h: 0.30,
+    fill: { color: C.panelDk },
+    line: { color: C.bar, width: 1 },
   });
+  s.addText("Python  ·  Streamlit  ·  Scikit-learn  ·  Plotly  ·  UCI IoT Data", {
+    x: 0.5, y: 5.22, w: 9.0, h: 0.30,
+    fontSize: 11, color: C.muted, fontFace: "Calibri", align: "center", valign: "middle",
+  });
+  bottomBar(s, C.accent);
 }
 
 // ─── SLIDE 2 — PROBLEM ────────────────────────────────────────────────────────
 {
   const s = pres.addSlide();
   s.background = { color: C.bg };
+  titleBar(s, "⚡  Problem: Binalarda Enerji İsrafı & Kontrol Eksikliği");
 
-  // Başlık bar
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: 10, h: 1.0,
-    fill: { color: C.bar },
-    line: { color: C.bar, width: 0 },
-  });
-  s.addText("⚡  Problem: Binalarda Enerji İsrafı", {
-    x: 0.4, y: 0.1, w: 9.2, h: 0.8,
-    fontSize: 24, bold: true, color: C.white, fontFace: "Calibri",
-    align: "left", valign: "middle",
-  });
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.98, w: 10, h: 0.04,
-    fill: { color: C.accent },
-    line: { color: C.accent, width: 0 },
-  });
-
-  // Sol — problem maddeleri
+  // Sol — 5 problem kartı
   const problems = [
-    { icon: "🏭", txt: "Binaların enerji tüketiminin %40'ı HVAC (ısıtma-soğutma) sistemlerinden kaynaklanır" },
-    { icon: "🔒", txt: "Geleneksel sistemler sabit If/Else kurallarıyla çalışır — hiç esneklik yoktur" },
-    { icon: "💸", txt: "Pik tarife saatlerinde bile tam güçle çalışarak gereksiz maliyet yaratır" },
-    { icon: "🌡️", txt: "Dış sıcaklık ve bina doluluk değişimlerine dinamik tepki veremez" },
-    { icon: "☁️", txt: "Sonuç: Fazla karbon emisyonu ve yüksek işletme maliyeti" },
+    { icon: "⚡", txt: "Bina enerjisinin %40'ı HVAC sistemlerinden — en büyük israf kaynağı" },
+    { icon: "🔒", txt: "Geleneksel sistemler sabit If/Else ile çalışır, esneklik sıfır" },
+    { icon: "💸", txt: "Pik tarife saatlerinde farkındalıksız tam güç → gereksiz maliyet" },
+    { icon: "🌡", txt: "Dış sıcaklık & doluluk değişimine dinamik tepki verilemiyor" },
+    { icon: "☁", txt: "Yüksek karbon emisyonu, işletme maliyeti ve konfor kaybı" },
   ];
-
   problems.forEach((p, i) => {
-    const py = 1.15 + i * 0.78;
-    card(s, 0.4, py, 5.3, 0.65, C.warn);
-    s.addText(p.icon, {
-      x: 0.55, y: py + 0.08, w: 0.5, h: 0.5,
-      fontSize: 18, align: "center",
-    });
+    const py = 1.12 + i * 0.84;
+    card(s, 0.38, py, 5.35, 0.72, C.gold);
+    s.addText(p.icon, { x: 0.50, y: py + 0.12, w: 0.44, h: 0.44, fontSize: 18, align: "center" });
     s.addText(p.txt, {
-      x: 1.1, y: py + 0.08, w: 4.5, h: 0.5,
+      x: 1.02, y: py + 0.12, w: 4.58, h: 0.48,
       fontSize: 11.5, color: C.white, fontFace: "Calibri",
       align: "left", valign: "middle",
     });
   });
 
-  // Sağ — ihtiyaç & çözüm kutusu
-  card(s, 6.1, 1.15, 3.5, 4.1, C.accent2);
-  s.addText("Çözüm İhtiyacı", {
-    x: 6.2, y: 1.25, w: 3.3, h: 0.45,
-    fontSize: 15, bold: true, color: C.accent2,
+  // Sağ — çözüm kutusu
+  card(s, 6.0, 1.12, 3.62, 4.20, C.teal);
+  s.addText("Çözüm: 3 Katmanlı Akıllı Sistem", {
+    x: 6.1, y: 1.20, w: 3.42, h: 0.42,
+    fontSize: 13.5, bold: true, color: C.teal,
     fontFace: "Calibri", align: "center",
   });
 
-  const solutions = [
-    "✅  Veriden öğrenen akıllı sistem",
-    "✅  Tarife saatine duyarlı kontrol",
-    "✅  Doluluk bazlı güç ayarı",
-    "✅  Dinamik sıcaklık tepkisi",
-    "✅  Gerçek zamanlı dashboard",
-    "✅  CO₂ takibi & raporlama",
+  const layers = [
+    { num: "1", color: C.teal,   title: "Dijital İkiz",    desc: "Fiziksel bina modelini\nsimüle eder" },
+    { num: "2", color: C.purple, title: "Ajan Sistemi",    desc: "Gerçek zamanlı\nkararlar alır" },
+    { num: "3", color: C.accent, title: "ML + IoT",        desc: "Veriden öğrenir,\ngerçekle doğrular" },
   ];
-  solutions.forEach((sol, i) => {
-    s.addText(sol, {
-      x: 6.25, y: 1.75 + i * 0.55, w: 3.2, h: 0.45,
-      fontSize: 12, color: C.white, fontFace: "Calibri",
-      align: "left", valign: "middle",
-    });
-  });
-}
-
-// ─── SLIDE 3 — SİSTEM MİMARİSİ / AKIŞ DİYAGRAMI ─────────────────────────────
-{
-  const s = pres.addSlide();
-  s.background = { color: C.bg };
-
-  // Başlık bar
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: 10, h: 1.0,
-    fill: { color: C.bar },
-    line: { color: C.bar, width: 0 },
-  });
-  s.addText("🔧  Sistem Mimarisi ve Model Akışı", {
-    x: 0.4, y: 0.1, w: 9.2, h: 0.8,
-    fontSize: 24, bold: true, color: C.white, fontFace: "Calibri",
-    align: "left", valign: "middle",
-  });
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.98, w: 10, h: 0.04,
-    fill: { color: C.accent },
-    line: { color: C.accent, width: 0 },
-  });
-
-  // ─ AKIŞ DİYAGRAMI (sol sütun — dikey) ────────────────────────────────────
-  // Kutu boyutları
-  const bw = 3.2, bh = 0.52, bx = 0.35;
-  const steps = [
-    { y: 1.12, label: "📥  Girdi Verileri", color: C.accent,  sub: "Saat | Dış Sıcaklık | Kişi Sayısı | Tarife" },
-    { y: 1.88, label: "🌳  Random Forest ML Modeli", color: "7C3AED", sub: "365 gün × 24 saat eğitim verisi" },
-    { y: 2.64, label: "⚡  Optimal Klima Gücü (kW)", color: C.accent2, sub: "Tahmin çıktısı — elle kural yazılmadan" },
-    { y: 3.40, label: "📊  KPI Hesaplama", color: C.warn,  sub: "Enerji % | Maliyet TL | CO₂ kg" },
-    { y: 4.16, label: "🖥️  Streamlit Dashboard", color: "E11D48", sub: "İnteraktif görselleştirme & raporlama" },
-  ];
-
-  steps.forEach((st, i) => {
-    // Kutu
+  layers.forEach((l, i) => {
+    const ly = 1.72 + i * 1.14;
     s.addShape(pres.shapes.RECTANGLE, {
-      x: bx, y: st.y, w: bw, h: bh,
-      fill: { color: C.panel },
-      line: { color: st.color, width: 1.8 },
-      shadow: makeShadow(),
+      x: 6.18, y: ly, w: 3.26, h: 0.96,
+      fill: { color: C.panelDk },
+      line: { color: l.color, width: 1.5 },
     });
-    s.addShape(pres.shapes.RECTANGLE, {
-      x: bx, y: st.y, w: 0.07, h: bh,
-      fill: { color: st.color },
-      line: { color: st.color, width: 0 },
+    // Numara dairesi
+    s.addShape(pres.shapes.OVAL, {
+      x: 6.26, y: ly + 0.20, w: 0.50, h: 0.50,
+      fill: { color: l.color },
+      line: { color: l.color, width: 0 },
     });
-    s.addText(st.label, {
-      x: bx + 0.15, y: st.y + 0.03, w: bw - 0.2, h: 0.28,
-      fontSize: 12, bold: true, color: C.white, fontFace: "Calibri",
+    s.addText(l.num, {
+      x: 6.26, y: ly + 0.20, w: 0.50, h: 0.50,
+      fontSize: 16, bold: true, color: C.white,
+      fontFace: "Calibri", align: "center", valign: "middle",
     });
-    s.addText(st.sub, {
-      x: bx + 0.15, y: st.y + 0.28, w: bw - 0.2, h: 0.22,
-      fontSize: 9.5, color: C.muted, fontFace: "Calibri",
+    s.addText(l.title, {
+      x: 6.84, y: ly + 0.08, w: 2.50, h: 0.30,
+      fontSize: 13, bold: true, color: l.color, fontFace: "Calibri",
     });
-    // Ok (son kutudan sonra yok)
-    if (i < steps.length - 1) {
-      s.addShape(pres.shapes.RECTANGLE, {
-        x: bx + bw / 2 - 0.025, y: st.y + bh, w: 0.05, h: 0.26,
-        fill: { color: C.muted },
-        line: { color: C.muted, width: 0 },
-      });
-      // ok ucu (üçgen simulasyonu — küçük kare eğik)
+    s.addText(l.desc, {
+      x: 6.84, y: ly + 0.36, w: 2.50, h: 0.50,
+      fontSize: 10.5, color: C.muted, fontFace: "Calibri",
+    });
+    // Ok (son hariç)
+    if (i < 2) {
       s.addText("▼", {
-        x: bx + bw / 2 - 0.18, y: st.y + bh + 0.18, w: 0.36, h: 0.2,
+        x: 7.50, y: ly + 0.96, w: 0.6, h: 0.18,
         fontSize: 10, color: C.muted, align: "center",
       });
     }
   });
+}
 
-  // ─ SAĞ: Özellik Önem Grafiği + Geleneksel Karşılaştırma ──────────────────
-  // Başlık
-  s.addText("Özellik Önem Skoru (Random Forest)", {
-    x: 4.0, y: 1.1, w: 5.7, h: 0.4,
-    fontSize: 13, bold: true, color: C.accent, fontFace: "Calibri", align: "center",
-  });
+// ─── SLIDE 3 — SİSTEM MİMARİSİ ────────────────────────────────────────────────
+{
+  const s = pres.addSlide();
+  s.background = { color: C.bg };
+  titleBar(s, "🔧  Sistem Mimarisi — 3 Katmanlı Yapı");
 
-  const features = [
-    { name: "Dış Sıcaklık",      pct: 42, color: C.accent },
-    { name: "Elektrik Tarifesi", pct: 31, color: C.accent2 },
-    { name: "Kişi Sayısı",       pct: 18, color: C.warn },
-    { name: "Saat",              pct:  9, color: "E11D48" },
+  // 3 sütun başlıkları
+  const cols = [
+    { x: 0.25, title: "🌲 ML Katmanı",      color: C.accent },
+    { x: 3.55, title: "🤝 Ajan Katmanı",    color: C.purple },
+    { x: 6.85, title: "🏠 Dijital İkiz",    color: C.teal   },
   ];
-  const barMaxW = 4.0, barH = 0.44, barX = 5.3, barStartY = 1.6;
+  const colW = 3.10;
 
-  features.forEach((f, i) => {
-    const fy = barStartY + i * (barH + 0.2);
-    const fw = barMaxW * f.pct / 100;
-
-    // İsim
-    s.addText(f.name, {
-      x: 4.0, y: fy + 0.05, w: 1.25, h: barH - 0.1,
-      fontSize: 11, color: C.white, fontFace: "Calibri",
-      align: "right", valign: "middle",
-    });
-    // Bar arka plan
+  cols.forEach(col => {
+    // Sütun başlık kutusu
     s.addShape(pres.shapes.RECTANGLE, {
-      x: barX, y: fy, w: barMaxW, h: barH,
-      fill: { color: "1E3A5F" },
-      line: { color: "1E3A5F", width: 0 },
+      x: col.x, y: 1.08, w: colW, h: 0.44,
+      fill: { color: col.color },
+      line: { color: col.color, width: 0 },
     });
-    // Dolu bar
-    s.addShape(pres.shapes.RECTANGLE, {
-      x: barX, y: fy, w: fw, h: barH,
-      fill: { color: f.color },
-      line: { color: f.color, width: 0 },
-    });
-    // Yüzde
-    s.addText(f.pct + "%", {
-      x: barX + fw + 0.08, y: fy + 0.05, w: 0.5, h: barH - 0.1,
-      fontSize: 12, bold: true, color: f.color, fontFace: "Calibri",
+    s.addText(col.title, {
+      x: col.x, y: 1.08, w: colW, h: 0.44,
+      fontSize: 13.5, bold: true, color: C.white,
+      fontFace: "Calibri", align: "center", valign: "middle",
     });
   });
 
-  // Geleneksel vs ML not kutusu
-  card(s, 4.0, 4.05, 5.6, 1.45, "7C3AED");
-  s.addText("Geleneksel (If/Else)  vs  ML Modeli", {
-    x: 4.1, y: 4.12, w: 5.4, h: 0.35,
-    fontSize: 12, bold: true, color: "7C3AED", fontFace: "Calibri", align: "center",
-  });
-
-  const compare = [
-    ["Karar mekanizması", "Elle yazılmış kurallar", "Veriden öğrenilen örüntüler"],
-    ["Esneklik",          "Kural değiştirilmeli",   "Yeni veriyle yeniden eğitilir"],
-    ["Tarife farkındalığı","Sadece yazılmışsa",      "Otomatik öğrenir"],
+  // ── ML Sütunu ──────────────────────────────────────────────────────────────
+  const mlSteps = [
+    { txt: "365 Gün × 24 Saat\nSentetik Veri" },
+    { txt: "Random Forest\nEğitimi" },
+    { txt: "Optimal Güç\nTahmini (kW)" },
   ];
-  compare.forEach((row, i) => {
-    const ry = 4.52 + i * 0.27;
-    s.addText("• " + row[0] + ":", {
-      x: 4.1, y: ry, w: 1.6, h: 0.25,
-      fontSize: 9.5, bold: true, color: C.muted, fontFace: "Calibri",
+  mlSteps.forEach((st, i) => {
+    const sy = 1.62 + i * 1.02;
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 0.25, y: sy, w: colW, h: 0.72,
+      fill: { color: C.panel },
+      line: { color: C.accent, width: 1.5 },
     });
-    s.addText("❌  " + row[1], {
-      x: 5.7, y: ry, w: 1.8, h: 0.25,
-      fontSize: 9.5, color: "F87171", fontFace: "Calibri",
+    s.addText(st.txt, {
+      x: 0.30, y: sy + 0.06, w: colW - 0.1, h: 0.60,
+      fontSize: 11.5, color: C.white, fontFace: "Calibri",
+      align: "center", valign: "middle",
     });
-    s.addText("✅  " + row[2], {
-      x: 7.55, y: ry, w: 2.0, h: 0.25,
-      fontSize: 9.5, color: "4ADE80", fontFace: "Calibri",
+    if (i < 2) s.addText("▼", { x: 0.25 + colW / 2 - 0.22, y: sy + 0.75, w: 0.44, h: 0.22, fontSize: 10, color: C.muted, align: "center" });
+  });
+  // Özellik önemleri
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0.25, y: 4.70, w: colW, h: 0.70,
+    fill: { color: C.panelDk },
+    line: { color: C.accent, width: 1 },
+  });
+  s.addText("Sıcaklık 42%  ·  Tarife 31%\nKişi 18%  ·  Saat 9%", {
+    x: 0.30, y: 4.72, w: colW - 0.10, h: 0.65,
+    fontSize: 10, color: C.muted, fontFace: "Calibri", align: "center", valign: "middle",
+  });
+
+  // ── Ajan Sütunu ───────────────────────────────────────────────────────────
+  const ajanItems = [
+    { icon: "🔵", name: "Konfor Ajanı",   desc: "T_iç > 26°C → güç artır",   color: C.accent },
+    { icon: "🟢", name: "Maliyet Ajanı",  desc: "Pik tarife → güç düşür",    color: C.green  },
+    { icon: "🟠", name: "Sürd. Ajanı",    desc: "Boş bina → standby",        color: C.gold   },
+  ];
+  ajanItems.forEach((a, i) => {
+    const ay = 1.62 + i * 0.82;
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 3.55, y: ay, w: colW, h: 0.68,
+      fill: { color: C.panel },
+      line: { color: a.color, width: 1.5 },
     });
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 3.55, y: ay, w: 0.07, h: 0.68,
+      fill: { color: a.color },
+      line: { color: a.color, width: 0 },
+    });
+    s.addText(a.icon + "  " + a.name, {
+      x: 3.68, y: ay + 0.04, w: colW - 0.20, h: 0.28,
+      fontSize: 11.5, bold: true, color: C.white, fontFace: "Calibri",
+    });
+    s.addText(a.desc, {
+      x: 3.68, y: ay + 0.32, w: colW - 0.20, h: 0.28,
+      fontSize: 10.5, color: C.muted, fontFace: "Calibri",
+    });
+    if (i < 2) s.addText("▼", { x: 3.55 + colW / 2 - 0.22, y: ay + 0.70, w: 0.44, h: 0.20, fontSize: 9, color: C.muted, align: "center" });
+  });
+  // Koordinatör kutusu
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 3.55, y: 4.12, w: colW, h: 0.82,
+    fill: { color: C.panelDk },
+    line: { color: C.purple, width: 2 },
+    shadow: makeShadow(),
+  });
+  s.addText("⚖️  Koordinatör Ajan", {
+    x: 3.60, y: 4.14, w: colW - 0.10, h: 0.28,
+    fontSize: 12, bold: true, color: C.purple, fontFace: "Calibri", align: "center",
+  });
+  s.addText("P = w₁·Pkonfor + w₂·Pmaliyet + w₃·Psürd", {
+    x: 3.60, y: 4.42, w: colW - 0.10, h: 0.44,
+    fontSize: 10, color: C.white, fontFace: "Calibri", align: "center", italic: true,
+  });
+
+  // ── Dijital İkiz Sütunu ───────────────────────────────────────────────────
+  const dtSteps = [
+    { txt: "Gerçek IoT Verisi\n(UCI Dataset)", color: C.gold },
+    { txt: "Isı Dengesi Denklemi\nT_iç[t+1] = T_iç[t] + α(T_dış−T_iç) + β·N − γ·P", color: C.teal },
+    { txt: "İç Sıcaklık\nSimülasyonu", color: C.teal },
+    { txt: "Validasyon\nMAE  ·  RMSE  ·  R²", color: C.green },
+  ];
+  dtSteps.forEach((st, i) => {
+    const dy = 1.62 + i * 0.88;
+    s.addShape(pres.shapes.RECTANGLE, {
+      x: 6.85, y: dy, w: colW, h: 0.72,
+      fill: { color: C.panel },
+      line: { color: st.color, width: 1.5 },
+    });
+    s.addText(st.txt, {
+      x: 6.90, y: dy + 0.05, w: colW - 0.10, h: 0.62,
+      fontSize: i === 1 ? 9.5 : 11.5, color: C.white,
+      fontFace: i === 1 ? "Consolas" : "Calibri",
+      align: "center", valign: "middle",
+    });
+    if (i < 3) s.addText("▼", { x: 6.85 + colW / 2 - 0.22, y: dy + 0.74, w: 0.44, h: 0.18, fontSize: 9, color: C.muted, align: "center" });
+  });
+
+  // Alt birleşme okları ve dashboard kutusu
+  const arrowY = 5.10;
+  [0.25 + colW / 2, 3.55 + colW / 2, 6.85 + colW / 2].forEach(ax => {
+    s.addText("▼", { x: ax - 0.22, y: arrowY, w: 0.44, h: 0.20, fontSize: 10, color: C.muted, align: "center" });
+  });
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 1.8, y: 5.26, w: 6.4, h: 0.30,
+    fill: { color: C.accent },
+    line: { color: C.accent, width: 0 },
+  });
+  s.addText("Streamlit Dashboard — 6 Sekme", {
+    x: 1.8, y: 5.26, w: 6.4, h: 0.30,
+    fontSize: 12, bold: true, color: C.white,
+    fontFace: "Calibri", align: "center", valign: "middle",
   });
 }
 
@@ -351,112 +396,100 @@ function card(slide, x, y, w, h, accentColor) {
 {
   const s = pres.addSlide();
   s.background = { color: C.bg };
+  titleBar(s, "📈  Sonuçlar & Sistem Çıktısı");
 
-  // Başlık bar
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0, w: 10, h: 1.0,
-    fill: { color: C.bar },
-    line: { color: C.bar, width: 0 },
-  });
-  s.addText("📈  Simülasyon Sonuçları ve Sistem Çıktısı", {
-    x: 0.4, y: 0.1, w: 9.2, h: 0.8,
-    fontSize: 24, bold: true, color: C.white, fontFace: "Calibri",
-    align: "left", valign: "middle",
-  });
-  s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 0.98, w: 10, h: 0.04,
-    fill: { color: C.accent },
-    line: { color: C.accent, width: 0 },
-  });
-
-  // 4 büyük KPI kartı
+  // 4 KPI kutusu
   const kpis = [
-    { val: "~30%",   label: "Enerji\nTasarrufu",   sub: "Geleneksele göre",   color: C.accent },
-    { val: "~40 ₺",  label: "Günlük Maliyet\nAzaltımı", sub: "TL cinsinden",  color: C.accent2 },
-    { val: "~5 kg",  label: "CO₂\nAzaltımı",       sub: "kg / gün",           color: C.warn },
-    { val: "8.760",  label: "Eğitim\nÖrneği",      sub: "365gün × 24saat",    color: "7C3AED" },
+    { val: "~30%",    lbl1: "ML Enerji",     lbl2: "Tasarrufu",          color: C.accent },
+    { val: "~37%",    lbl1: "Ajan Enerji",   lbl2: "Tasarrufu",          color: C.purple },
+    { val: "R²≈0.90", lbl1: "IoT Validasyon",lbl2: "Doğruluk Skoru",    color: C.teal   },
+    { val: "8.760",   lbl1: "ML Eğitim",     lbl2: "Örneği",             color: C.gold   },
   ];
   kpis.forEach((k, i) => {
-    const kx = 0.35 + i * 2.38;
+    const kx = 0.28 + i * 2.38;
     s.addShape(pres.shapes.RECTANGLE, {
-      x: kx, y: 1.1, w: 2.18, h: 1.8,
+      x: kx, y: 1.10, w: 2.18, h: 1.70,
       fill: { color: C.panel },
       line: { color: k.color, width: 2 },
       shadow: makeShadow(),
     });
     s.addShape(pres.shapes.RECTANGLE, {
-      x: kx, y: 1.1, w: 2.18, h: 0.07,
+      x: kx, y: 1.10, w: 2.18, h: 0.06,
       fill: { color: k.color },
       line: { color: k.color, width: 0 },
     });
     s.addText(k.val, {
-      x: kx, y: 1.2, w: 2.18, h: 0.72,
-      fontSize: 32, bold: true, color: k.color,
+      x: kx, y: 1.18, w: 2.18, h: 0.72,
+      fontSize: i === 2 ? 22 : 30, bold: true, color: k.color,
       fontFace: "Calibri", align: "center",
     });
-    s.addText(k.label, {
-      x: kx, y: 1.92, w: 2.18, h: 0.55,
-      fontSize: 12, bold: true, color: C.white,
+    s.addText(k.lbl1 + "\n" + k.lbl2, {
+      x: kx, y: 1.88, w: 2.18, h: 0.58,
+      fontSize: 11, bold: false, color: C.white,
       fontFace: "Calibri", align: "center",
-    });
-    s.addText(k.sub, {
-      x: kx, y: 2.47, w: 2.18, h: 0.35,
-      fontSize: 9.5, color: C.muted,
-      fontFace: "Calibri", align: "center", italic: true,
     });
   });
 
-  // Sol alt — detay maddeleri
-  const details = [
-    { icon: "🎯", txt: "Pik tarife saatlerinde güç otomatik %35–65 azaltılır" },
-    { icon: "🤖", txt: "Random Forest modeli elle kural yazmadan optimal kararı öğrenir" },
-    { icon: "🎛️", txt: "Sidebar parametreleri (sıcaklık, doluluk, tarife) anlık güncellenebilir" },
-  ];
-  details.forEach((d, i) => {
-    const dy = 3.05 + i * 0.72;
-    card(s, 0.35, dy, 5.5, 0.6, C.accent);
-    s.addText(d.icon, {
-      x: 0.48, y: dy + 0.06, w: 0.45, h: 0.45,
-      fontSize: 18, align: "center",
-    });
-    s.addText(d.txt, {
-      x: 0.95, y: dy + 0.08, w: 4.75, h: 0.45,
-      fontSize: 12, color: C.white, fontFace: "Calibri",
-      align: "left", valign: "middle",
-    });
+  // Sol alt — Dashboard özellikleri
+  card(s, 0.28, 2.96, 5.30, 2.50, C.accent);
+  s.addText("Dashboard Özellikleri", {
+    x: 0.42, y: 3.02, w: 5.0, h: 0.36,
+    fontSize: 13, bold: true, color: C.accent, fontFace: "Calibri",
   });
-
-  // Sağ alt — dashboard bileşenleri
-  card(s, 6.1, 3.0, 3.55, 2.4, C.accent2);
-  s.addText("Dashboard Bileşenleri", {
-    x: 6.2, y: 3.08, w: 3.35, h: 0.4,
-    fontSize: 13, bold: true, color: C.accent2,
-    fontFace: "Calibri", align: "center",
-  });
-  const comps = [
-    "📊  4 büyük KPI kartı",
-    "📈  Güç profili karşılaştırma grafiği",
-    "🔵  Özellik önem çubuk grafiği",
-    "🥧  Klima modu pasta grafiği",
-    "📋  Renk gradyanlı detay tablosu",
+  const dash = [
+    "⚡  3 sistemin güç profili karşılaştırması",
+    "🏠  Dijital İkiz iç sıcaklık dinamiği + konfor bandı",
+    "🤝  Ajan oy tablosu + koordinatör kararı",
+    "🤖  Random Forest özellik önem analizi",
+    "📡  UCI IoT verisiyle gerçek zamanlı validasyon",
+    "📋  Tüm sistemlerin saatlik detay tablosu",
   ];
-  comps.forEach((c, i) => {
-    s.addText(c, {
-      x: 6.25, y: 3.52 + i * 0.36, w: 3.3, h: 0.32,
+  dash.forEach((d, i) => {
+    s.addText(d, {
+      x: 0.42, y: 3.42 + i * 0.34, w: 5.0, h: 0.30,
       fontSize: 11, color: C.white, fontFace: "Calibri",
       align: "left", valign: "middle",
     });
   });
 
-  // Alt çizgi
+  // Sağ alt — Akademik katkılar
+  card(s, 5.80, 2.96, 3.92, 2.50, C.purple);
+  s.addText("Akademik Katkılar", {
+    x: 5.94, y: 3.02, w: 3.70, h: 0.36,
+    fontSize: 13, bold: true, color: C.purple, fontFace: "Calibri",
+  });
+  const akademik = [
+    "• Fiziksel Dijital İkiz: ısı dengesi\n  kapalı döngü kontrolü",
+    "• Çoklu Ajan: ağırlıklı koordinasyon\n  mekanizması",
+    "• ML ile kural-öğrenme karşılaştırması",
+    "• Gerçek IoT verisiyle model\n  validasyonu (MAE/RMSE/R²)",
+  ];
+  akademik.forEach((a, i) => {
+    s.addText(a, {
+      x: 5.94, y: 3.42 + i * 0.55, w: 3.70, h: 0.50,
+      fontSize: 10.5, color: C.white, fontFace: "Calibri",
+      align: "left", valign: "top",
+    });
+  });
+
+  // Alt teknoloji bar
   s.addShape(pres.shapes.RECTANGLE, {
-    x: 0, y: 5.58, w: 10, h: 0.045,
+    x: 0, y: 5.57, w: 10, h: 0.055,
     fill: { color: C.accent },
     line: { color: C.accent, width: 0 },
+  });
+  s.addShape(pres.shapes.RECTANGLE, {
+    x: 0, y: 5.35, w: 10, h: 0.22,
+    fill: { color: C.panelDk },
+    line: { color: C.panelDk, width: 0 },
+  });
+  s.addText("Teknoloji: Python  ·  Streamlit  ·  Scikit-learn  ·  Plotly  ·  UCI ML Repository", {
+    x: 0, y: 5.35, w: 10, h: 0.22,
+    fontSize: 10, color: C.muted, fontFace: "Calibri", align: "center", valign: "middle",
   });
 }
 
 // ─── KAYDET ───────────────────────────────────────────────────────────────────
 pres.writeFile({ fileName: "bina_enerji_dijital_ikiz_sunum.pptx" })
-  .then(() => console.log("✅  Sunum oluşturuldu: bina_enerji_dijital_ikiz_sunum.pptx"))
-  .catch(err => console.error("❌  Hata:", err));
+  .then(() => console.log("OK bina_enerji_dijital_ikiz_sunum.pptx"))
+  .catch(err => { console.error("HATA:", err); process.exit(1); });
