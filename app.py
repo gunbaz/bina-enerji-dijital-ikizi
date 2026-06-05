@@ -89,6 +89,19 @@ with st.sidebar:
         w_surd    /= _w_top
     st.caption(f"Normalize: {w_konfor:.2f} / {w_maliyet:.2f} / {w_surd:.2f}")
 
+# ── KENAR DURUM VALİDASYONU ───────────────────────────────────────────────────
+_hatalar = []
+if mesai_bitis <= mesai_baslangic:
+    _hatalar.append("⛔ Mesai bitişi başlangıçtan önce veya eşit olamaz.")
+if klima_gucu <= standby_gucu:
+    _hatalar.append("⛔ Klima gücü standby gücünden büyük olmalıdır.")
+if fiyat_pik <= fiyat_normal:
+    _hatalar.append("⚠️ Pik tarife normal tarifeden büyük olmalı — aksi halde Maliyet Ajanı anlamsızlaşır.")
+if _hatalar:
+    for hata in _hatalar:
+        st.error(hata)
+    st.stop()
+
 # ── 24 SAATLIK SENARYO VERİSİ ─────────────────────────────────────────────────
 saatler = list(range(24))
 
@@ -165,10 +178,8 @@ def geleneksel_kapali_dongu(dataframe, klima_max, standby, alpha, beta):
 
         guc[t] = p
         if t + 1 < n:
-            ic_sic[t + 1] = (T_ic
-                             + alpha * (T_dis - T_ic)
-                             + beta  * N
-                             - SOGUTMA_KATSAYISI * p)
+            raw = T_ic + alpha * (T_dis - T_ic) + beta * N - SOGUTMA_KATSAYISI * p
+            ic_sic[t + 1] = float(np.clip(raw, 5.0, 60.0))  # fiziksel sınırlar
     return guc, ic_sic
 
 gel_guc, ic_sic_gel = geleneksel_kapali_dongu(
@@ -183,12 +194,17 @@ df["IcSic_Gel"] = ic_sic_gel
 # Düzeltme 2: Hedef (OptimalGuc) artık fiyata değil T_iç konfor durumuna göre belirleniyor.
 # Düzeltme 3: Tahmin aşamasında her saat T_iç hesaplanıp bir sonraki adıma besleniyor.
 @st.cache_resource(show_spinner="🤖 ML modeli eğitiliyor (T_iç kapalı döngü)...")
-def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
+def model_egit(n_trees, max_depth, klima_gucu, standby_gucu,
+               fiyat_pik, fiyat_normal,           # ← fiyat_normal artık parametre
+               mesai_bas, mesai_bit,               # ← mesai saatleri artık parametre
                alpha=0.15, beta=0.05, gamma=2.0):
     """
     Özellikler: [Saat, T_dış, T_iç, Kişi, Fiyat]
     Hedef     : T_iç konfor durumuna dayalı optimal güç
-                (fiyat ikincil faktör — birincil kriter konfor)
+    Düzeltmeler:
+      - fiyat_normal ve mesai saatleri artık sidebar'dan geliyor (cache key'e dahil)
+      - T_dis, ana simülasyonla aynı _dis_sic() fonksiyonuyla hesaplanıyor
+      - T_ic fiziksel sınırlar içinde tutuluyor (5–60°C)
     """
     np.random.seed(42)
     kayitlar = []
@@ -196,14 +212,12 @@ def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
     for _ in range(365):
         base_T = np.random.uniform(10, 40)
         amp_T  = np.random.uniform(2, 10)
-        T_ic   = base_T  # günün başlangıç iç sıcaklığı
+        T_ic   = _dis_sic(mesai_bas, base_T, amp_T)  # günün başı: sabah sıcaklığı
 
         for h in range(24):
-            T_dis = (base_T + amp_T * math.sin(math.pi * (h - 5) / 9)
-                     if 5 <= h <= 14
-                     else base_T - amp_T * abs(math.sin(math.pi * (h - 14) / 14)))
-            N   = int(np.random.randint(0, 50) * (1 if 8 <= h <= 18 else 0))
-            f   = fiyat_pik if (12 <= h <= 15) or (18 <= h <= 22) else 2.5
+            T_dis = _dis_sic(h, base_T, amp_T)    # ana simülasyonla aynı formül
+            N   = int(np.random.randint(0, 50) * (1 if mesai_bas <= h < mesai_bit else 0))
+            f   = fiyat_pik if (12 <= h <= 15) or (18 <= h <= 22) else fiyat_normal
 
             # ── Hedef: T_iç konforuna göre optimal güç ──────────────────────────
             # Birincil kriter: T_iç
@@ -228,8 +242,9 @@ def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
             optimal = float(np.clip(optimal, standby_gucu, klima_gucu))
             kayitlar.append([h, T_dis, T_ic, N, f, optimal])
 
-            # T_iç'i güncelle (bir sonraki saatin girdisi)
-            T_ic = T_ic + alpha * (T_dis - T_ic) + beta * N - gamma * optimal
+            # T_iç'i güncelle — fiziksel sınırlar içinde tut
+            raw  = T_ic + alpha * (T_dis - T_ic) + beta * N - gamma * optimal
+            T_ic = float(np.clip(raw, 5.0, 60.0))
 
     egitim = pd.DataFrame(kayitlar,
                           columns=["Saat", "Dis_Sic", "Ic_Sic", "Kisi", "Fiyat", "OptimalGuc"])
@@ -240,7 +255,9 @@ def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
               egitim["OptimalGuc"].values)
     return model
 
-model = model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
+model = model_egit(n_trees, max_depth, klima_gucu, standby_gucu,
+                   fiyat_pik, fiyat_normal,
+                   mesai_baslangic, mesai_bitis,
                    alpha=bina_yalitim, beta=insan_isi, gamma=SOGUTMA_KATSAYISI)
 
 # Kapalı döngü ML tahmini: her saat T_iç modele besleniyor
@@ -262,10 +279,8 @@ def ml_kapali_dongu(dataframe, model, klima_max, standby, alpha, beta):
         guc[t] = p
 
         if t + 1 < n:
-            ic_sic[t + 1] = (T_ic
-                             + alpha * (T_dis - T_ic)
-                             + beta  * N
-                             - SOGUTMA_KATSAYISI * p)
+            raw = T_ic + alpha * (T_dis - T_ic) + beta * N - SOGUTMA_KATSAYISI * p
+            ic_sic[t + 1] = float(np.clip(raw, 5.0, 60.0))  # fiziksel sınırlar
     return guc, ic_sic
 
 ml_guc, ic_sic_ml = ml_kapali_dongu(
@@ -355,10 +370,8 @@ def ajan_ve_ikiz_sim(dataframe, klima_max, standby,
 
         # ── Isı dinamiği → bir sonraki saat ─────────────────────────────────────
         if t + 1 < n:
-            ic_sic[t + 1] = (T_ic
-                             + alpha * (T_dis - T_ic)
-                             + beta  * N
-                             - SOGUTMA_KATSAYISI * p_final)
+            raw = T_ic + alpha * (T_dis - T_ic) + beta * N - SOGUTMA_KATSAYISI * p_final
+            ic_sic[t + 1] = float(np.clip(raw, 5.0, 60.0))  # fiziksel sınırlar
 
     return ajan_guc, konfor_oneri, maliyet_oneri, surd_oneri, ic_sic
 
@@ -380,8 +393,8 @@ gel_enerji  = df["Gel_kWh"].sum()
 ml_enerji   = df["ML_kWh"].sum()
 gel_maliyet = df["Gel_TL"].sum()
 ml_maliyet  = df["ML_TL"].sum()
-enerji_pct  = (gel_enerji  - ml_enerji)  / gel_enerji  * 100
-maliyet_pct = (gel_maliyet - ml_maliyet) / gel_maliyet * 100
+enerji_pct  = (gel_enerji  - ml_enerji)  / gel_enerji  * 100 if gel_enerji  > 0 else 0.0
+maliyet_pct = (gel_maliyet - ml_maliyet) / gel_maliyet * 100 if gel_maliyet > 0 else 0.0
 co2_azalma  = (gel_enerji  - ml_enerji)  * 0.4
 
 st.markdown('<div class="section-title">📊 Özet Sonuçlar</div>', unsafe_allow_html=True)
@@ -415,8 +428,8 @@ with c4:
 # ── KPI — SATIR 2: Ajan vs Geleneksel ────────────────────────────────────────
 ajan_enerji      = df["Ajan_kWh"].sum()
 ajan_maliyet     = df["Ajan_TL"].sum()
-ajan_enerji_pct  = (gel_enerji  - ajan_enerji)  / gel_enerji  * 100
-ajan_maliyet_pct = (gel_maliyet - ajan_maliyet) / gel_maliyet * 100
+ajan_enerji_pct  = (gel_enerji  - ajan_enerji)  / gel_enerji  * 100 if gel_enerji  > 0 else 0.0
+ajan_maliyet_pct = (gel_maliyet - ajan_maliyet) / gel_maliyet * 100 if gel_maliyet > 0 else 0.0
 ajan_co2         = (gel_enerji  - ajan_enerji)  * 0.4
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -482,7 +495,7 @@ with tab1:
     fig.add_trace(go.Bar(
         x=df["Saat"], y=df["Fiyat"],
         name="Tarife (TL/kWh)", yaxis="y2",
-        marker_color=["#ef5350" if f == fiyat_pik else "#66bb6a" for f in df["Fiyat"]],
+        marker_color=["#ef5350" if abs(f - fiyat_pik) < 0.01 else "#66bb6a" for f in df["Fiyat"]],
         opacity=0.20
     ))
     fig.update_layout(
