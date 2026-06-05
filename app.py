@@ -120,7 +120,9 @@ df = pd.DataFrame({
     "Fiyat":        elektrik_fiyatlari,
 })
 
-SOGUTMA_KATSAYISI = 0.8  # γ: klimanın °C düşürme katsayısı (sabit fizik sabiti)
+SOGUTMA_KATSAYISI = 2.0  # γ: klimanın °C/kW/saat düşürme katsayısı
+# Fiziksel dayanak: 2.5 kW klima, COP≈3 → 7.5 kW ısı çekimi,
+# ~50 m² ofis termal kütlesi ≈ 0.4 kWh/°C → 7.5/0.4 ≈ 5°C/saat → γ≈2.0/kW
 
 # ── GELENEKSEL SİSTEM — Kapalı Döngü (If/Else + T_iç geri besleme) ────────────
 # Düzeltme: T_dış yerine T_iç eşiğine bakıyor;
@@ -165,7 +167,7 @@ df["IcSic_Gel"] = ic_sic_gel
 # Düzeltme 3: Tahmin aşamasında her saat T_iç hesaplanıp bir sonraki adıma besleniyor.
 @st.cache_resource(show_spinner="🤖 ML modeli eğitiliyor (T_iç kapalı döngü)...")
 def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
-               alpha=0.15, beta=0.05):
+               alpha=0.15, beta=0.05, gamma=2.0):
     """
     Özellikler: [Saat, T_dış, T_iç, Kişi, Fiyat]
     Hedef     : T_iç konfor durumuna dayalı optimal güç
@@ -210,7 +212,7 @@ def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
             kayitlar.append([h, T_dis, T_ic, N, f, optimal])
 
             # T_iç'i güncelle (bir sonraki saatin girdisi)
-            T_ic = T_ic + alpha * (T_dis - T_ic) + beta * N - SOGUTMA_KATSAYISI * optimal
+            T_ic = T_ic + alpha * (T_dis - T_ic) + beta * N - gamma * optimal
 
     egitim = pd.DataFrame(kayitlar,
                           columns=["Saat", "Dis_Sic", "Ic_Sic", "Kisi", "Fiyat", "OptimalGuc"])
@@ -222,7 +224,7 @@ def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
     return model
 
 model = model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
-                   alpha=bina_yalitim, beta=insan_isi)
+                   alpha=bina_yalitim, beta=insan_isi, gamma=SOGUTMA_KATSAYISI)
 
 # Kapalı döngü ML tahmini: her saat T_iç modele besleniyor
 def ml_kapali_dongu(dataframe, model, klima_max, standby, alpha, beta):
