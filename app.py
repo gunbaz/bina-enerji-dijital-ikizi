@@ -92,12 +92,22 @@ with st.sidebar:
 # ── 24 SAATLIK SENARYO VERİSİ ─────────────────────────────────────────────────
 saatler = list(range(24))
 
-dis_sicakliklar = [
-    round(temel_sicaklik + sicaklik_amplitud * math.sin(math.pi * (h - 5) / 9), 1)
-    if 5 <= h <= 14
-    else round(temel_sicaklik - sicaklik_amplitud * abs(math.sin(math.pi * (h - 14) / 14)), 1)
-    for h in saatler
-]
+# Gerçekçi günlük sıcaklık profili:
+# En soğuk: saat 05:00 → T_min = temel - amplitud
+# En sıcak : saat 14:00 → T_max = temel + amplitud
+# İsınma fazı (05→14, 9 saat): sin eğrisi ile yükseliş
+# Soğuma fazı (14→05, 15 saat): sin eğrisi ile iniş
+def _dis_sic(h, temel, amp):
+    T_min, T_max = temel - amp, temel + amp
+    if 5 <= h <= 14:                         # isınma: 9 saat
+        p = (h - 5) / 9
+        return round(T_min + (T_max - T_min) * math.sin(math.pi / 2 * p), 1)
+    else:                                    # soğuma: 15 saat
+        gecen = h - 14 if h > 14 else h + 24 - 14
+        p = gecen / 15
+        return round(T_max - (T_max - T_min) * math.sin(math.pi / 2 * p), 1)
+
+dis_sicakliklar = [_dis_sic(h, temel_sicaklik, sicaklik_amplitud) for h in saatler]
 
 doluluk = []
 for h in saatler:
