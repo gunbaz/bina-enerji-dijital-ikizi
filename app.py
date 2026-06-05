@@ -316,21 +316,21 @@ def ajan_ve_ikiz_sim(dataframe, klima_max, standby,
 
         # ── Maliyet Ajanı ───────────────────────────────────────────────────────
         # Hedef: elektrik maliyetini minimize et
-        # Düzeltme: T_iç konfortaysa standby — serin binayı soğutmaya gerek yok
-        if N == 0 or T_ic <= 24:
-            p_maliyet = standby                # boş bina VEYA zaten serin → standby
+        # Eşik = 26°C (konfor bandı üst sınırı) — Konfor Ajanı ile aynı
+        if N == 0 or T_ic <= 26:
+            p_maliyet = standby                # konforlu veya boş → standby
         elif f >= pik_fiyat:
-            p_maliyet = klima_max * 0.35       # pik + sıcak → düşük güçle yavaş soğut
+            p_maliyet = klima_max * 0.35       # pik + rahatsız → düşük güç (pahalı saat)
         else:
-            p_maliyet = klima_max * 0.60       # normal tarife + sıcak → orta güç
+            p_maliyet = klima_max * 0.60       # normal + rahatsız → orta güç
 
         # ── Sürdürülebilirlik Ajanı ─────────────────────────────────────────────
         # Hedef: toplam enerji ve CO₂ minimize et
-        # Düzeltme: T_iç konfortaysa standby — gereksiz soğutma yapma
-        if N == 0 or T_ic <= 24:
-            p_surd = standby                   # boş bina VEYA zaten serin → standby
+        # Eşik = 26°C — zorunlu olmadıkça çalışma
+        if N == 0 or T_ic <= 26:
+            p_surd = standby                   # konforlu veya boş → standby
         else:
-            p_surd = klima_max * 0.35          # dolu + sıcak → minimum viable güç
+            p_surd = klima_max * 0.35          # rahatsız + dolu → minimum güç
 
         # ── Koordinatör Ajan ────────────────────────────────────────────────────
         p_final = (w_konfor  * p_konfor
