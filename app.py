@@ -120,90 +120,151 @@ df = pd.DataFrame({
     "Fiyat":        elektrik_fiyatlari,
 })
 
-# ── GELENEKSEL SİSTEM (If/Else) ────────────────────────────────────────────────
-def geleneksel_sim(row):
-    if row.Insan_Sayisi > 0 or row.Dis_Sicaklik > 24:
-        return klima_gucu
-    return standby_gucu
+SOGUTMA_KATSAYISI = 0.8  # γ: klimanın °C düşürme katsayısı (sabit fizik sabiti)
 
-df["Gel_kWh"] = df.apply(geleneksel_sim, axis=1)
-df["Gel_TL"]  = df["Gel_kWh"] * df["Fiyat"]
+# ── GELENEKSEL SİSTEM — Kapalı Döngü (If/Else + T_iç geri besleme) ────────────
+# Düzeltme: T_dış yerine T_iç eşiğine bakıyor;
+# her saatin kararı bir sonraki saatin iç sıcaklığını belirliyor.
+def geleneksel_kapali_dongu(dataframe, klima_max, standby, alpha, beta):
+    n      = len(dataframe)
+    ic_sic = [0.0] * n
+    guc    = [0.0] * n
+    ic_sic[0] = dataframe["Dis_Sicaklik"].iloc[0]
 
-# ── ML MODELİ EĞİTİMİ ─────────────────────────────────────────────────────────
-@st.cache_resource(show_spinner="🤖 ML modeli eğitiliyor...")
-def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik):
+    for t in range(n):
+        T_ic = ic_sic[t]
+        T_dis = dataframe["Dis_Sicaklik"].iloc[t]
+        N     = dataframe["Insan_Sayisi"].iloc[t]
+
+        # Karar: T_iç ve doluluk durumuna göre (artık T_dış değil)
+        if N > 0 and T_ic > 24:       # dolu ve sıcak → tam güç
+            p = klima_max
+        elif N == 0 and T_ic > 28:    # boş ama aşırı sıcak → yarım güç
+            p = klima_max * 0.50
+        else:                          # konforlu veya boş → standby
+            p = standby
+
+        guc[t] = p
+        if t + 1 < n:
+            ic_sic[t + 1] = (T_ic
+                             + alpha * (T_dis - T_ic)
+                             + beta  * N
+                             - SOGUTMA_KATSAYISI * p)
+    return guc, ic_sic
+
+gel_guc, ic_sic_gel = geleneksel_kapali_dongu(
+    df, klima_gucu, standby_gucu, bina_yalitim, insan_isi
+)
+df["Gel_kWh"]   = gel_guc
+df["Gel_TL"]    = df["Gel_kWh"] * df["Fiyat"]
+df["IcSic_Gel"] = ic_sic_gel
+
+# ── ML MODELİ — T_iç Özellikli Eğitim + Kapalı Döngü Tahmin ──────────────────
+# Düzeltme 1: Eğitim sırasında T_iç simüle ediliyor ve özellik olarak kullanılıyor.
+# Düzeltme 2: Hedef (OptimalGuc) artık fiyata değil T_iç konfor durumuna göre belirleniyor.
+# Düzeltme 3: Tahmin aşamasında her saat T_iç hesaplanıp bir sonraki adıma besleniyor.
+@st.cache_resource(show_spinner="🤖 ML modeli eğitiliyor (T_iç kapalı döngü)...")
+def model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
+               alpha=0.15, beta=0.05):
+    """
+    Özellikler: [Saat, T_dış, T_iç, Kişi, Fiyat]
+    Hedef     : T_iç konfor durumuna dayalı optimal güç
+                (fiyat ikincil faktör — birincil kriter konfor)
+    """
     np.random.seed(42)
-    gun_guvec = []
+    kayitlar = []
+
     for _ in range(365):
         base_T = np.random.uniform(10, 40)
         amp_T  = np.random.uniform(2, 10)
-        for h in range(24):
-            T = base_T + amp_T * math.sin(math.pi * (h - 5) / 9) if 5 <= h <= 14 \
-                else base_T - amp_T * abs(math.sin(math.pi * (h - 14) / 14))
-            N = int(np.random.randint(0, 50) * (1 if 8 <= h <= 18 else 0))
-            f = fiyat_pik if (12 <= h <= 15) or (18 <= h <= 22) else 2.5
-            if N == 0:
-                optimal = standby_gucu
-            elif T >= 32 and N >= 30:
-                optimal = klima_gucu
-            elif f == fiyat_pik and N < 15:
-                optimal = klima_gucu * 0.30 + np.random.normal(0, 0.03)
-            elif f == fiyat_pik:
-                optimal = klima_gucu * 0.65 + np.random.normal(0, 0.05)
-            elif T >= 28:
-                optimal = klima_gucu * 0.80 + np.random.normal(0, 0.05)
-            elif T >= 24:
-                optimal = klima_gucu * 0.55 + np.random.normal(0, 0.04)
-            else:
-                optimal = klima_gucu * 0.35 + np.random.normal(0, 0.03)
-            optimal = float(np.clip(optimal, standby_gucu, klima_gucu))
-            gun_guvec.append([h, T, N, f, optimal])
+        T_ic   = base_T  # günün başlangıç iç sıcaklığı
 
-    egitim = pd.DataFrame(gun_guvec, columns=["Saat", "Sicaklik", "Kisi", "Fiyat", "OptimalGuc"])
+        for h in range(24):
+            T_dis = (base_T + amp_T * math.sin(math.pi * (h - 5) / 9)
+                     if 5 <= h <= 14
+                     else base_T - amp_T * abs(math.sin(math.pi * (h - 14) / 14)))
+            N   = int(np.random.randint(0, 50) * (1 if 8 <= h <= 18 else 0))
+            f   = fiyat_pik if (12 <= h <= 15) or (18 <= h <= 22) else 2.5
+
+            # ── Hedef: T_iç konforuna göre optimal güç ──────────────────────────
+            # Birincil kriter: T_iç
+            # İkincil kriter: fiyat (konfor bozuluyorsa fiyat göz ardı edilir)
+            if N == 0:
+                optimal = standby_gucu                          # boş bina → her zaman standby
+            elif T_ic > 28:
+                optimal = klima_gucu                            # aşırı sıcak → tam güç (fiyat göz ardı)
+            elif T_ic > 26:                                     # rahatsız — soğutma gerekli
+                if f == fiyat_pik:
+                    optimal = klima_gucu * 0.70 + np.random.normal(0, 0.04)
+                else:
+                    optimal = klima_gucu * 0.85 + np.random.normal(0, 0.04)
+            elif T_ic > 24:                                     # sınırda — hafif soğutma
+                if f == fiyat_pik:
+                    optimal = klima_gucu * 0.30 + np.random.normal(0, 0.03)
+                else:
+                    optimal = klima_gucu * 0.50 + np.random.normal(0, 0.03)
+            else:                                               # konforlu → minimal güç
+                optimal = standby_gucu + np.random.normal(0, 0.01)
+
+            optimal = float(np.clip(optimal, standby_gucu, klima_gucu))
+            kayitlar.append([h, T_dis, T_ic, N, f, optimal])
+
+            # T_iç'i güncelle (bir sonraki saatin girdisi)
+            T_ic = T_ic + alpha * (T_dis - T_ic) + beta * N - SOGUTMA_KATSAYISI * optimal
+
+    egitim = pd.DataFrame(kayitlar,
+                          columns=["Saat", "Dis_Sic", "Ic_Sic", "Kisi", "Fiyat", "OptimalGuc"])
     model = RandomForestRegressor(
         n_estimators=n_trees, max_depth=max_depth, random_state=42, n_jobs=-1
     )
-    model.fit(egitim[["Saat", "Sicaklik", "Kisi", "Fiyat"]].values,
+    model.fit(egitim[["Saat", "Dis_Sic", "Ic_Sic", "Kisi", "Fiyat"]].values,
               egitim["OptimalGuc"].values)
     return model
 
-model        = model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik)
-ml_tahminler = np.clip(model.predict(df[["Saat", "Dis_Sicaklik", "Insan_Sayisi", "Fiyat"]].values),
-                       standby_gucu, klima_gucu)
-df["ML_kWh"] = ml_tahminler
-df["ML_TL"]  = df["ML_kWh"] * df["Fiyat"]
+model = model_egit(n_trees, max_depth, klima_gucu, standby_gucu, fiyat_pik,
+                   alpha=bina_yalitim, beta=insan_isi)
 
-# Özellik önem skoru
+# Kapalı döngü ML tahmini: her saat T_iç modele besleniyor
+def ml_kapali_dongu(dataframe, model, klima_max, standby, alpha, beta):
+    n      = len(dataframe)
+    ic_sic = [0.0] * n
+    guc    = [0.0] * n
+    ic_sic[0] = dataframe["Dis_Sicaklik"].iloc[0]
+
+    for t in range(n):
+        T_ic  = ic_sic[t]
+        T_dis = dataframe["Dis_Sicaklik"].iloc[t]
+        N     = dataframe["Insan_Sayisi"].iloc[t]
+        f     = dataframe["Fiyat"].iloc[t]
+        h     = dataframe["Saat"].iloc[t]
+
+        X = np.array([[h, T_dis, T_ic, N, f]])
+        p = float(np.clip(model.predict(X)[0], standby, klima_max))
+        guc[t] = p
+
+        if t + 1 < n:
+            ic_sic[t + 1] = (T_ic
+                             + alpha * (T_dis - T_ic)
+                             + beta  * N
+                             - SOGUTMA_KATSAYISI * p)
+    return guc, ic_sic
+
+ml_guc, ic_sic_ml = ml_kapali_dongu(
+    df, model, klima_gucu, standby_gucu, bina_yalitim, insan_isi
+)
+df["ML_kWh"]   = ml_guc
+df["ML_TL"]    = df["ML_kWh"] * df["Fiyat"]
+df["IcSic_ML"] = ic_sic_ml
+
+# Özellik önem skoru (5 özellik)
 onem    = model.feature_importances_
 onem_df = pd.DataFrame({
-    "Özellik":  ["Saat", "Dış Sıcaklık", "Kişi Sayısı", "Elektrik Tarife"],
+    "Özellik":  ["Saat", "Dış Sıcaklık", "İç Sıcaklık (T_iç)", "Kişi Sayısı", "Elektrik Tarife"],
     "Önem (%)": (onem * 100).round(1)
 }).sort_values("Önem (%)", ascending=True)
 
 # ── Tasarruf (global — tablo ve tab3 için) ────────────────────────────────────
 df["Tasarruf_TL"] = df["Gel_TL"] - df["ML_TL"]
-
-# ── ISI DİNAMİĞİ FONKSİYONU (Geleneksel & ML için) ───────────────────────────
-# T_iç[t+1] = T_iç[t] + α·(T_dış-T_iç) + β·N - γ·P_klima
-SOGUTMA_KATSAYISI = 0.8   # γ: klimanın °C düşürme katsayısı
-
-def isi_dinamigi_sim(dataframe, guc_kolonu, alpha, beta):
-    """Verilen güç profili için saatlik iç sıcaklık hesaplar."""
-    n      = len(dataframe)
-    ic_sic = [0.0] * n
-    ic_sic[0] = dataframe["Dis_Sicaklik"].iloc[0]
-    for t in range(n - 1):
-        T_ic  = ic_sic[t]
-        T_dis = dataframe["Dis_Sicaklik"].iloc[t]
-        N     = dataframe["Insan_Sayisi"].iloc[t]
-        P     = dataframe[guc_kolonu].iloc[t]
-        ic_sic[t + 1] = T_ic + alpha * (T_dis - T_ic) + beta * N - SOGUTMA_KATSAYISI * P
-    return ic_sic
-
-ic_sic_gel = isi_dinamigi_sim(df, "Gel_kWh", bina_yalitim, insan_isi)
-ic_sic_ml  = isi_dinamigi_sim(df, "ML_kWh",  bina_yalitim, insan_isi)
-df["IcSic_Gel"] = ic_sic_gel
-df["IcSic_ML"]  = ic_sic_ml
 
 # ── ÇOKLU AJAN + DİJİTAL İKİZ (geri beslemeli döngü) ─────────────────────────
 def ajan_ve_ikiz_sim(dataframe, klima_max, standby,
@@ -935,25 +996,35 @@ with tab6:
                 )
 
                 # ── Kalibrasyon İpucu ─────────────────────────────────────────
-                with st.expander("🔧 Modeli Kalibre Etmek İçin İpuçları"):
+                with st.expander("⚠️ Validasyon Sınırlılıkları & Kalibrasyon"):
                     st.markdown(f"""
 **MAE = {mae:.2f} °C | RMSE = {rmse:.2f} °C | R² = {r2:.3f}**
 
-Dijital İkiz modeli sadece **dış sıcaklığa** dayalı termal dinamiği simüle eder.
-Gerçek bir binanın iç sıcaklığı şu faktörlerden de etkilenir:
+---
 
-| Faktör | Etkisi | Modelde Karşılığı |
-|--------|--------|-------------------|
-| Dış sıcaklık etkisi | Yüksek | **α** (Yalıtım katsayısı) |
-| Güneş radyasyonu | Orta | α'yı artırmak simüle eder |
-| İnsan ısısı | Düşük-Orta | **β** (Kişi başı ısı katkısı) |
-| Cihaz ısısı | Düşük | β'ya dahil edilebilir |
-| Termal atalet | Yüksek | α'yı küçültmek simüle eder |
+### Bilinen Sınırlılık: P_klima = 0 Varsayımı
 
-**Kalibrasyonu nasıl yaparsın?**
-Sidebar'dan **Yalıtım Katsayısı (α)** sliderını değiştir ve
-bu sekmedeki R² skorunun nasıl değiştiğini izle.
-R² maksimum olduğu noktada α kalibre edilmiş demektir.
+Bu validasyonda Dijital İkiz **P_klima = 0** kabul ederek çalışıyor.
+Yani bina hiç klima/kombi yokmuş gibi simüle ediliyor — sadece doğal ısı değişimi modelleniyor.
+
+**Neden bu sorun?**
+UCI veri setindeki Belçika evi gerçekte aktif ısıtma/soğutma sistemine sahipti.
+HVAC sistemi çalıştığında iç sıcaklık dış koşullardan bağımsız sabit tutuluyordu.
+Bu nedenle simülasyon ile gerçek sensör verisi arasında sapma kaçınılmazdır.
+
+| Durum | R² Beklentisi | Açıklama |
+|-------|---------------|----------|
+| HVAC kapalı saatler | Yüksek | Doğal termal drift iyi modellenir |
+| HVAC aktif saatler | Düşük | Simülasyon HVAC etkisini bilmiyor |
+
+**Gerçek çözüm nedir?**
+UCI veri setindeki `Appliances` (Wh) kolonu toplam cihaz enerjisini içeriyor
+ancak HVAC gücünü ayrıştırmak mümkün değil. Bunun için ayrı bir enerji alt sayacı gerekir.
+
+**Kalibrasyonu nasıl yaparsın (mevcut model için)?**
+Sidebar'dan **Yalıtım Katsayısı (α)** sliderını değiştir →
+R² maksimum olduğu noktada binanın termal geçirgenliği kalibre edilmiş demektir
+*(yalnızca HVAC-siz saatler için geçerli).*
 
 > Bu veri seti: *Candanedo et al. (2017). Appliances Energy Prediction.*
 > UCI ML Repository. DOI: [10.24432/C5VC8G](https://doi.org/10.24432/C5VC8G)
