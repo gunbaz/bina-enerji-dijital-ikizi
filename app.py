@@ -849,63 +849,120 @@ with tab6:
             sim_ml   = df["ML_kWh"].values
             sim_ajan = df["Ajan_kWh"].values
 
-            # ── Metrikler: her sistem vs gerçek air1 ─────────────────────────
+            # ── Metrikler ─────────────────────────────────────────────────────
             def metrik(pred, gercek):
                 mae  = mean_absolute_error(gercek, pred)
                 rmse = mean_squared_error(gercek, pred) ** 0.5
                 r2   = r2_score(gercek, pred)
-                return mae, rmse, r2
+                # Pearson korelasyonu — ölçek farkından bağımsız pattern benzerliği
+                if gercek.std() > 0 and pred.std() > 0:
+                    kor = float(np.corrcoef(gercek, pred)[0, 1])
+                else:
+                    kor = 0.0
+                return mae, rmse, r2, kor
 
-            mae_g,  rmse_g,  r2_g  = metrik(sim_gel,  gercek_air1)
-            mae_ml, rmse_ml, r2_ml = metrik(sim_ml,   gercek_air1)
-            mae_aj, rmse_aj, r2_aj = metrik(sim_ajan, gercek_air1)
+            mae_g,  rmse_g,  r2_g,  kor_g  = metrik(sim_gel,  gercek_air1)
+            mae_ml, rmse_ml, r2_ml, kor_ml = metrik(sim_ml,   gercek_air1)
+            mae_aj, rmse_aj, r2_aj, kor_aj = metrik(sim_ajan, gercek_air1)
 
-            # ── KPI satırı ───────────────────────────────────────────────────
-            st.markdown(f"**Ev {secilen_ev} — {secilen_gun} — Gerçek air1 (ortalama {gercek_air1.mean():.2f} kW)**")
+            # Normalize (0-1): örüntü karşılaştırması için
+            def norm01(x):
+                mn, mx = x.min(), x.max()
+                return (x - mn) / (mx - mn + 1e-9)
+            n_air1 = norm01(gercek_air1)
+            n_gel  = norm01(sim_gel)
+            n_ml   = norm01(sim_ml)
+            n_ajan = norm01(sim_ajan)
+
+            # ── Konut parametresi rehberi ─────────────────────────────────────
+            st.info(
+                f"**Ev {secilen_ev} — {secilen_gun}** | "
+                f"Gerçek air1 ort: **{gercek_air1.mean():.2f} kW** | "
+                f"Max: **{gercek_air1.max():.2f} kW**\n\n"
+                "💡 Konut simülasyonu için önerilen sidebar ayarları: "
+                "Klima Maks. Gücü → gerçek air1 max değerine yakın · "
+                "Mesai 08-23 · Max Kişi 3-5 · Temel Sıcaklık 34°C (Austin TX yaz)"
+            )
+
+            # ── KPI: Pearson korelasyon (birincil) + R² (ikincil) ─────────────
+            st.markdown("**Pattern Benzerliği (Pearson Korelasyonu) — ölçekten bağımsız:**")
             kc1, kc2, kc3 = st.columns(3)
-            kc1.metric("Geleneksel R²", f"{r2_g:.3f}",  f"MAE {mae_g:.3f} kW")
-            kc2.metric("ML Modeli R²",  f"{r2_ml:.3f}", f"MAE {mae_ml:.3f} kW")
-            kc3.metric("Ajan Sistemi R²",f"{r2_aj:.3f}",f"MAE {mae_aj:.3f} kW")
+            kc1.metric("Geleneksel Korelasyon", f"{kor_g:.3f}",
+                       f"R² {r2_g:.2f} | MAE {mae_g:.3f} kW")
+            kc2.metric("ML Modeli Korelasyon",  f"{kor_ml:.3f}",
+                       f"R² {r2_ml:.2f} | MAE {mae_ml:.3f} kW")
+            kc3.metric("Ajan Sistemi Korelasyon",f"{kor_aj:.3f}",
+                       f"R² {r2_aj:.2f} | MAE {mae_aj:.3f} kW")
 
+            st.caption(
+                "⚠️ R² negatif çıkması normaldir: simülasyon farklı ölçekli bir bina modelidir. "
+                "Pearson korelasyonu ölçekten bağımsız olarak **zaman içi örüntü benzerliğini** ölçer "
+                "(gün içinde ne zaman daha çok/az soğutma yapıldığı)."
+            )
             st.divider()
 
-            # ── Ana Grafik: gerçek air1 vs 3 sistem ──────────────────────────
+            # ── Grafik 1: Ham güç profilleri ─────────────────────────────────
             fig_ps = go.Figure()
             fig_ps.add_trace(go.Scatter(
                 x=saatler_24, y=gercek_air1,
-                name="Gerçek Klima Gücü (air1)",
-                line=dict(color="#26c6da", width=3),
+                name="Gerçek air1 (kW)", line=dict(color="#26c6da", width=3),
                 mode="lines+markers",
             ))
             fig_ps.add_trace(go.Scatter(
                 x=saatler_24, y=sim_gel,
-                name="Geleneksel (simüle)",
-                line=dict(color="#ef5350", width=2, dash="dash"),
+                name="Geleneksel (simüle)", line=dict(color="#ef5350", width=2, dash="dash"),
                 mode="lines+markers",
             ))
             fig_ps.add_trace(go.Scatter(
                 x=saatler_24, y=sim_ml,
-                name="ML Modeli (simüle)",
-                line=dict(color="#42a5f5", width=2),
+                name="ML Modeli (simüle)", line=dict(color="#42a5f5", width=2),
                 mode="lines+markers",
             ))
             fig_ps.add_trace(go.Scatter(
                 x=saatler_24, y=sim_ajan,
-                name="Ajan Sistemi (simüle)",
-                line=dict(color="#ab47bc", width=2),
+                name="Ajan Sistemi (simüle)", line=dict(color="#ab47bc", width=2),
                 mode="lines+markers",
             ))
             fig_ps.update_layout(
-                title=f"Gerçek Klima Gücü vs Simülasyon — Ev {secilen_ev}, {secilen_gun}",
+                title=f"Ham Güç Profili (kW) — Ev {secilen_ev}, {secilen_gun}",
                 xaxis_title="Saat", yaxis_title="Güç (kW)",
-                hovermode="x unified",
-                legend=dict(orientation="h", y=1.13),
-                height=440,
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#cfe2ff",
+                hovermode="x unified", legend=dict(orientation="h", y=1.13),
+                height=380, paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)", font_color="#cfe2ff",
             )
             st.plotly_chart(fig_ps, use_container_width=True)
+
+            # ── Grafik 2: Normalize profil (örüntü karşılaştırması) ───────────
+            st.markdown("**Normalize Güç Profili (0–1) — Örüntü Karşılaştırması:**")
+            fig_norm = go.Figure()
+            fig_norm.add_trace(go.Scatter(
+                x=saatler_24, y=n_air1,
+                name="Gerçek air1 (norm)", line=dict(color="#26c6da", width=3),
+                mode="lines+markers",
+            ))
+            fig_norm.add_trace(go.Scatter(
+                x=saatler_24, y=n_gel,
+                name="Geleneksel (norm)", line=dict(color="#ef5350", width=2, dash="dash"),
+                mode="lines+markers",
+            ))
+            fig_norm.add_trace(go.Scatter(
+                x=saatler_24, y=n_ml,
+                name="ML Modeli (norm)", line=dict(color="#42a5f5", width=2),
+                mode="lines+markers",
+            ))
+            fig_norm.add_trace(go.Scatter(
+                x=saatler_24, y=n_ajan,
+                name="Ajan Sistemi (norm)", line=dict(color="#ab47bc", width=2),
+                mode="lines+markers",
+            ))
+            fig_norm.update_layout(
+                title="Normalize Güç Profili — Ölçek Farkından Bağımsız Örüntü",
+                xaxis_title="Saat", yaxis_title="Normalize Güç (0–1)",
+                hovermode="x unified", legend=dict(orientation="h", y=1.13),
+                height=350, paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)", font_color="#cfe2ff",
+            )
+            st.plotly_chart(fig_norm, use_container_width=True)
 
             # ── Hata grafikleri ───────────────────────────────────────────────
             col_h1, col_h2 = st.columns(2)
