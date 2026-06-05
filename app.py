@@ -133,17 +133,24 @@ def geleneksel_kapali_dongu(dataframe, klima_max, standby, alpha, beta):
     guc    = [0.0] * n
     ic_sic[0] = dataframe["Dis_Sicaklik"].iloc[0]
 
+    klima_acik = False  # histerezis durumu
     for t in range(n):
         T_ic = ic_sic[t]
         T_dis = dataframe["Dis_Sicaklik"].iloc[t]
         N     = dataframe["Insan_Sayisi"].iloc[t]
 
-        # Karar: T_iç ve doluluk durumuna göre (artık T_dış değil)
-        if N > 0 and T_ic > 24:       # dolu ve sıcak → tam güç
-            p = klima_max
-        elif N == 0 and T_ic > 28:    # boş ama aşırı sıcak → yarım güç
+        # Histerezis ile karar: aç/kapat için farklı eşikler
+        # → titreşimi (bang-bang) önler
+        if N > 0:
+            if T_ic > 25:          # konfor üst eşiği → klima aç
+                klima_acik = True
+            elif T_ic < 22:        # konfor alt eşiği → klima kapat
+                klima_acik = False
+            p = klima_max if klima_acik else standby
+        elif T_ic > 28:            # boş ama aşırı sıcak → yarım güç
             p = klima_max * 0.50
-        else:                          # konforlu veya boş → standby
+        else:
+            klima_acik = False
             p = standby
 
         guc[t] = p
@@ -297,10 +304,11 @@ def ajan_ve_ikiz_sim(dataframe, klima_max, standby,
 
         # ── Konfor Ajanı ────────────────────────────────────────────────────────
         # Hedef: T_iç 20–26 °C konfor bandında kalsın
+        # Bölен 2.0 → 2°C üstünde tam güce ulaşır (eski 6.0 çok nazikti)
         if T_ic > 26:
-            asiri   = T_ic - 26          # kaç derece konfor bandı üstünde
+            asiri    = T_ic - 26
             p_konfor = min(klima_max,
-                           standby + asiri * (klima_max - standby) / 6.0)
+                           standby + asiri * (klima_max - standby) / 2.0)
         elif T_ic < 20:
             p_konfor = standby           # soğutmaya gerek yok
         else:
